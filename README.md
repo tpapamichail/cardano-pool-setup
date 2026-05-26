@@ -1,110 +1,112 @@
-# cardano-pool-setup
+# Cardano pool setup
 
-Automated, opinionated setup για **Cardano Block Producer** και **Relay** node σε φρέσκο Ubuntu 22.04 ή 24.04 server.
+Automated, opinionated setup for a **Cardano Block Producer** and **Relay** node on a fresh Ubuntu 22.04 or 24.04 server.
 
-Ένα `git clone` + ένα script = λειτουργικός node:
+One `git clone` + one script = working node:
 - Docker + cardano-node (Blink Labs image)
-- Tight chrony NTP (κρίσιμο για BP block timing)
-- UFW firewall lockdown ανάλογα με το ρόλο
+- Tight chrony NTP (critical for BP block timing)
+- UFW firewall lockdown based on the role
 - SSH hardening + fail2ban + sysctl tuning
-- Mainnet configs από IOG (authoritative)
-- Auto-generated topology (BP: locked στους relays· Relay: ledger discovery + IOG public roots)
-- zsh + oh-my-zsh ως default shell του root
-- Health check & preflight scripts + zsh aliases (auto-banner στο SSH login)
-- Systemd timer για periodic health checks
-- Optional Telegram alerts σε failures
+- Mainnet configs from IOG (authoritative)
+- Auto-generated topology (BP: locked to the relays; Relay: ledger discovery + IOG public roots)
+- zsh + oh-my-zsh as root's default shell
+- Health check & preflight scripts + zsh aliases (auto-banner on SSH login)
+- Systemd timer for periodic health checks
+- Optional Telegram alerts on failures
+
+🇬🇷 Διαθέσιμο και στα Ελληνικά: [README.gr.md](README.gr.md)
 
 ## Requirements
 
-- Φρέσκο Ubuntu **22.04 LTS** ή **24.04 LTS** (x86_64 ή arm64)
-- root SSH access (με public key — *passwords θα γίνουν disabled*)
-- ≥16 GB RAM, ≥200 GB free disk για mainnet
+- Fresh Ubuntu **22.04 LTS** or **24.04 LTS** (x86_64 or arm64)
+- root SSH access (with public key — *passwords will be disabled*)
+- ≥16 GB RAM, ≥200 GB free disk for mainnet
 - Internet access
-- **Για producer**: τα pool keys σου ήδη ανεβασμένα σε φάκελο στον server (βλ. παρακάτω)
+- **For producer**: your pool keys already uploaded to a folder on the server (see below)
 
 ## Quick start
 
 ```bash
-# Σε φρέσκο Ubuntu server, ως root:
+# On a fresh Ubuntu server, as root:
 git clone https://github.com/YOUR_USER/cardano-pool-setup.git
 cd cardano-pool-setup
 
-# Για block producer:
+# For a block producer:
 sudo ./install-producer.sh
 
-# Για relay:
+# For a relay:
 sudo ./install-relay.sh
 ```
 
-Το script θα σου ζητήσει interactively τα παρακάτω και θα τα σώσει σε `$CARDANO_HOME/config.env`:
+The script will interactively ask you for the following and save them to `$CARDANO_HOME/config.env`:
 
-| Variable        | Producer | Relay | Παράδειγμα |
-|-----------------|:--:|:--:|------------|
-| `CARDANO_HOME`  | ✓ | ✓ | `/opt/cardano` |
-| `POOL_NAME`     | ✓ |   | `MYPOOL` |
-| `RELAY_HOSTS`   | ✓ | ✓ | `relay1.example.com,relay2.example.com,relay3.example.com` |
-| `RELAY_PORT`    | ✓ | ✓ | `6000` |
-| `BP_EXPECTED_IP`|   | ✓ | `203.0.113.10` |
-| `KEYS_SOURCE_DIR`| ✓|   | `/tmp/pool-keys` |
-| `CARDANO_NETWORK`| ✓| ✓ | `mainnet` |
-| `TELEGRAM_*`    | opt | opt | για alerts |
+| Variable          | Producer | Relay | Example |
+|-------------------|:--:|:--:|------------|
+| `CARDANO_HOME`    | ✓ | ✓ | `/opt/cardano` |
+| `POOL_NAME`       | ✓ |   | `MYPOOL` |
+| `RELAY_HOSTS`     | ✓ | ✓ | `relay1.example.com,relay2.example.com,relay3.example.com` |
+| `RELAY_PORT`      | ✓ | ✓ | `6000` |
+| `BP_EXPECTED_IP`  |   | ✓ | `203.0.113.10` |
+| `KEYS_SOURCE_DIR` | ✓ |   | `/tmp/pool-keys` |
+| `CARDANO_NETWORK` | ✓ | ✓ | `mainnet` |
+| `TELEGRAM_*`      | opt | opt | for alerts |
 
 ## Producer keys — preparation
 
-**ΠΡΙΝ** τρέξεις το `install-producer.sh`, ανέβασε τα keys σε έναν φάκελο στον server (π.χ. `/tmp/pool-keys`). Πρέπει να περιέχει:
+**BEFORE** running `install-producer.sh`, upload the keys to a folder on the server (e.g. `/tmp/pool-keys`). It must contain:
 
-| Αρχείο             | Υποχρεωτικό | Περιγραφή |
-|--------------------|:---:|------------|
-| `cold.skey.gpg`    | ✓ | Encrypted cold signing key (GPG symmetric) |
-| `cold.vkey`        | ✓ | Cold verification key |
-| `cold.counter`     | ✓ | Op cert issue counter |
-| `vrf.skey`         | ✓ | VRF signing key |
-| `vrf.vkey`         | ✓ | VRF verification key |
-| `hot.skey`         | ✓ | KES signing key |
-| `hot.vkey`         | ✓ | KES verification key |
-| `op.cert`          | ✓ | Operational certificate |
-| `pool.id`          | ✓ | Hex pool ID |
+| File              | Required | Description |
+|-------------------|:---:|------------|
+| `cold.skey.gpg`   | ✓ | Encrypted cold signing key (GPG symmetric) |
+| `cold.vkey`       | ✓ | Cold verification key |
+| `cold.counter`    | ✓ | Op cert issue counter |
+| `vrf.skey`        | ✓ | VRF signing key |
+| `vrf.vkey`        | ✓ | VRF verification key |
+| `hot.skey`        | ✓ | KES signing key |
+| `hot.vkey`        | ✓ | KES verification key |
+| `op.cert`         | ✓ | Operational certificate |
+| `pool.id`         | ✓ | Hex pool ID |
 
-> ⚠️ **ΔΕΝ επιτρέπεται plaintext `cold.skey`** στον φάκελο. Encrypt το με `gpg --symmetric --cipher-algo AES256 cold.skey` πρώτα.
+> ⚠️ **Plaintext `cold.skey` is NOT allowed** in the folder. Encrypt it first with `gpg --symmetric --cipher-algo AES256 cold.skey`.
 
-Αν δεν έχεις ακόμα `hot.*` ή `op.cert`, παρήγαγέ τα σε offline μηχάνημα και πρόσθεσέ τα στον φάκελο.
+If you don't yet have `hot.*` or `op.cert`, generate them on an offline machine and add them to the folder.
 
-Μετά το install, ο installer:
-1. Validates ότι όλα τα required αρχεία υπάρχουν
-2. Τα εγκαθιστά σε `$POOL_DIR` (`/opt/cardano/priv/pool/<NAME>`) με `chmod 400`
-3. Κάνει copy τα runtime keys (vrf, kes, op cert) στο `$BP_KEYS_DIR` (`/opt/cardano/bp-keys`) που mount-άρει το container
-4. Σε εσένα μένει να κάνεις `shred -u` τα αρχεία στο `KEYS_SOURCE_DIR` αφού επιβεβαιώσεις ότι ο node ξεκίνησε
+After install, the installer:
+1. Validates that all required files exist
+2. Installs them to `$POOL_DIR` (`/opt/cardano/priv/pool/<NAME>`) with `chmod 400`
+3. Copies the runtime keys (vrf, kes, op cert) to `$BP_KEYS_DIR` (`/opt/cardano/bp-keys`) which the container mounts
+4. It's up to you to `shred -u` the files in `KEYS_SOURCE_DIR` once you've verified the node started
 
-## Δομή που εγκαθιστά
+## Installed layout
 
 ```
 /opt/cardano/                       # $CARDANO_HOME
-├── config.env                      # Generated by installer (sourced από όλα)
-├── docker-compose.yaml             # Rendered από template
+├── config.env                      # Generated by installer (sourced everywhere)
+├── docker-compose.yaml             # Rendered from template
 ├── db/                             # ChainDB
 ├── ipc/                            # Unix socket
 ├── config/mainnet/                 # configs + topology.json
 ├── priv/pool/<POOL_NAME>/          # Cold + VRF + KES + op.cert
 ├── bp-keys/                        # Runtime keys (read-only mount)
 ├── scripts/                        # bp-health, bp-preflight, relay-health, kes-rotate, gpg-helpers
-└── aliases.zsh                     # Sourced από ~/.zshrc του root
+└── aliases.zsh                     # Sourced from root's ~/.zshrc
 ```
 
-## Μετά το install
+## After install
 
-Ξανασυνδέσου με SSH (ή `exec zsh`). Θα δεις το banner help και ένα quickcheck:
+Reconnect over SSH (or `exec zsh`). You'll see the help banner and a quickcheck:
 
 **Producer**:
 ```
-bp-help          Επανεμφανίζει το menu
+bp-help          Re-displays the menu
 bp-tip           Sync status
-bp-preflight     Πλήρης 12-section preflight
-bp-health        Γρήγορο health summary
+bp-preflight     Full 12-section preflight
+bp-health        Quick health summary
 bp-logs          Tail logs
 bp-forge         Live forge activity
 kes-rotate       KES rotation (interactive)
-gpg-encrypt/decrypt  Helper για keys
-... (δες bp-help για όλη τη λίστα)
+gpg-encrypt/decrypt  Helper for keys
+... (see bp-help for the full list)
 ```
 
 **Relay**:
@@ -113,44 +115,44 @@ r-help           Menu
 r-tip / r-peers  Status
 r-health         Health check
 r-logs / r-stats / r-nview
-... (δες r-help)
+... (see r-help)
 ```
 
 ## Idempotency / re-running
 
-Τα install scripts είναι ασφαλή στο rerun. Κάθε step ελέγχει αν έχει ήδη γίνει (marker αρχεία σε `/var/lib/cardano-pool-setup/done/`). Για forced reinstall ενός βήματος, σβήσε το αντίστοιχο marker και ξανατρέξε.
+The install scripts are safe to rerun. Each step checks whether it has already run (marker files in `/var/lib/cardano-pool-setup/done/`). To force a step to reinstall, delete the corresponding marker and rerun.
 
 ## Telegram alerts
 
-Αν δώσεις `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` στο config:
-- Ο systemd timer τρέχει `bp-preflight --fast` / `relay-health --fast` κάθε 15 λεπτά
-- Σε failure, στέλνει αυτόματα Telegram message
+If you provide `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` in the config:
+- A systemd timer runs `bp-preflight --fast` / `relay-health --fast` every 15 minutes
+- On failure, it automatically sends a Telegram message
 
-Δημιουργία bot: μίλα στον [@BotFather](https://t.me/BotFather), πάρε token. Chat ID: από [@userinfobot](https://t.me/userinfobot).
+To create a bot: talk to [@BotFather](https://t.me/BotFather) and get a token. Chat ID: from [@userinfobot](https://t.me/userinfobot).
 
 ## KES rotation
 
-Όταν τα `bp-preflight` ή cron σε ειδοποιήσουν ότι το KES κοντεύει να λήξει:
+When `bp-preflight` or cron notifies you that KES is about to expire:
 
 ```bash
 kes-rotate
 ```
 
-Το script θα:
-1. Backup-άρει τα παλιά keys
-2. GPG-decrypt το cold.skey (θα σου ζητήσει passphrase)
-3. Generate νέο KES keypair + op cert για το current period
-4. Deploy στο `$BP_KEYS_DIR`
-5. Restart του producer container
-6. Shred το plaintext cold.skey (πάντα, με trap)
-7. Verify με `query kes-period-info`
+The script will:
+1. Back up the old keys
+2. GPG-decrypt the cold.skey (it will prompt for the passphrase)
+3. Generate a new KES keypair + op cert for the current period
+4. Deploy to `$BP_KEYS_DIR`
+5. Restart the producer container
+6. Shred the plaintext cold.skey (always, via trap)
+7. Verify with `query kes-period-info`
 
-## Limitations / Σημειώσεις
+## Limitations / Notes
 
-- Υποστηρίζονται μόνο Ubuntu 22.04/24.04 (έχει tested apt repos για Docker)
-- Υποθέτει ότι τρέχει ως root με SSH key already (αλλιώς δεν disable-άρει password auth)
-- Producer compose εκθέτει `:6000` αλλά το ufw επιτρέπει inbound μόνο από τις IPs των relays (resolved μία φορά κατά το install — αν αλλάξουν IPs χρειάζεται rerun)
-- Image `latest`: συνιστάται να pin-άρεις σε συγκεκριμένη version σε production
+- Only Ubuntu 22.04/24.04 is supported (tested apt repos for Docker)
+- Assumes it's running as root with an SSH key already in place (otherwise it won't disable password auth)
+- Producer compose exposes `:6000` but ufw only allows inbound from the relays' IPs (resolved once during install — if the IPs change, a rerun is needed)
+- Image `latest`: it's recommended to pin to a specific version in production
 
 ## License
 
