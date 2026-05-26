@@ -1,0 +1,4 @@
+config.env
+*.bak
+*.swp
+.DS_Store
