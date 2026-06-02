@@ -57,16 +57,36 @@ fi
 section "Peers"
 metrics=$(docker exec producer curl -s http://localhost:12798/metrics 2>/dev/null)
 if [[ -n "$metrics" ]]; then
-  inb=$(echo "$metrics"  | awk '/^cardano_node_metrics_inboundCxns_int/  {print $2}')
-  outb=$(echo "$metrics" | awk '/^cardano_node_metrics_outboundCxns_int/ {print $2}')
-  cold=$(echo "$metrics" | awk '/^cardano_node_metrics_coldPeers_int/    {print $2}')
-  warm=$(echo "$metrics" | awk '/^cardano_node_metrics_warmPeers_int/    {print $2}')
-  hot=$(echo "$metrics"  | awk '/^cardano_node_metrics_hotPeers_int/     {print $2}')
-  if [[ "${outb:-0}" -gt 0 ]]; then
-    ok "Outbound: ${outb}  Inbound: ${inb:-0}"
-    ok "Peers — cold: ${cold:-0}, warm: ${warm:-0}, hot: ${hot:-0}"
+  # P2P metrics (νέες εκδόσεις cardano-node)
+  p2p_hot=$(echo "$metrics"    | awk '/^cardano_node_metrics_peerSelection_Hot_int / {print $2}')
+  p2p_warm=$(echo "$metrics"   | awk '/^cardano_node_metrics_peerSelection_Warm_int / {print $2}')
+  p2p_cold=$(echo "$metrics"   | awk '/^cardano_node_metrics_peerSelection_Cold_int / {print $2}')
+  p2p_active=$(echo "$metrics" | awk '/^cardano_node_metrics_peerSelection_ActivePeers_int / {print $2}')
+  duplex=$(echo "$metrics"     | awk '/^cardano_node_metrics_connectionManager_duplexConns_int / {print $2}')
+  outb_p2p=$(echo "$metrics"   | awk '/^cardano_node_metrics_connectionManager_outboundConns_int / {print $2}')
+
+  if [[ -n "$p2p_hot" || -n "$p2p_active" || -n "$duplex" ]]; then
+    # P2P node
+    active=${p2p_active:-${p2p_hot:-0}}
+    if [[ "${active:-0}" -gt 0 || "${duplex:-0}" -gt 0 ]]; then
+      ok "P2P peers — hot: ${p2p_hot:-0}, warm: ${p2p_warm:-0}, cold: ${p2p_cold:-0}, active: ${p2p_active:-0}"
+      [[ -n "$duplex" ]] && ok "Duplex connections: ${duplex}"
+    else
+      err "0 active P2P peers — relay unreachable?"
+    fi
   else
-    err "No outbound connections — relay unreachable?"
+    # Legacy non-P2P fallback
+    outb=$(echo "$metrics" | awk '/^cardano_node_metrics_outboundCxns_int / {print $2}')
+    inb=$(echo "$metrics"  | awk '/^cardano_node_metrics_inboundCxns_int / {print $2}')
+    cold=$(echo "$metrics" | awk '/^cardano_node_metrics_coldPeers_int / {print $2}')
+    warm=$(echo "$metrics" | awk '/^cardano_node_metrics_warmPeers_int / {print $2}')
+    hot=$(echo "$metrics"  | awk '/^cardano_node_metrics_hotPeers_int / {print $2}')
+    if [[ "${outb:-0}" -gt 0 ]]; then
+      ok "Outbound: ${outb}  Inbound: ${inb:-0}"
+      ok "Peers — cold: ${cold:-0}, warm: ${warm:-0}, hot: ${hot:-0}"
+    else
+      err "No outbound connections — relay unreachable?"
+    fi
   fi
 else
   warn "Metrics endpoint unreachable"
