@@ -34,8 +34,8 @@ for f in "${FILES[@]}"; do
   fi
 done
 
-# Patch config.json για να δείχνει στα σωστά genesis paths (IOG uses relative paths)
-# και ενεργοποίηση Prometheus metrics στο 12798
+# Patch config.json to point at the correct genesis paths (IOG uses relative paths)
+# and enable Prometheus metrics on 12798
 cfg="${CARDANO_CONFIG_DIR}/config.json"
 tmp=$(mktemp)
 jq '

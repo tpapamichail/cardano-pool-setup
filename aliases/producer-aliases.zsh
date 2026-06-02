@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 # ============================================================
-# Cardano BP aliases — parameterized από $CARDANO_HOME/config.env
-# Σε sourced από ~/.zshrc μέσω aliases-install.sh
+# Cardano BP aliases — parameterized from $CARDANO_HOME/config.env
+# Sourced from ~/.zshrc via aliases-install.sh
 # ============================================================
 
 : ${CARDANO_HOME:=/opt/cardano}
@@ -61,7 +61,7 @@ bp-help() {
   echo "${CT}╚══════════════════════════════════════════════════════════════════╝${N}"
   echo
   echo "${CC}── STATUS ──────────────────────────────────────────────────────────${N}"
-  printf "  ${CM}%-16s${CD}%s${N}\n" "bp-health"   "Όλα-σε-ένα health check (σύνοψη)"
+  printf "  ${CM}%-16s${CD}%s${N}\n" "bp-health"   "All-in-one health check (summary)"
   printf "  ${CM}%-16s${CD}%s${N}\n" "bp-preflight" "Preflight check (12 sections)"
   printf "  ${CM}%-16s${CD}%s${N}\n" "bp-tip"      "Sync status & current network tip"
   printf "  ${CM}%-16s${CD}%s${N}\n" "bp-kes"      "KES period info & expiry"
@@ -93,9 +93,9 @@ bp-help() {
   printf "  ${CM}%-16s${CD}%s${N}\n" "bp-disk"     "Disk usage"
   echo
   echo "${CC}── RAW CLI ─────────────────────────────────────────────────────────${N}"
-  printf "  ${CM}%-16s${CD}%s${N}\n" "cardano-cli" "Full cardano-cli με mounts"
+  printf "  ${CM}%-16s${CD}%s${N}\n" "cardano-cli" "Full cardano-cli with mounts"
   echo
-  echo "${DM}  bp-help anytime για αυτό το menu${N}"
+  echo "${DM}  bp-help anytime for this menu${N}"
   echo
 }
 
@@ -125,7 +125,7 @@ bp-quickcheck() {
   fi
 }
 
-# Auto-run στο interactive shell
+# Auto-run on interactive shell
 if [[ -o interactive ]]; then
   bp-help
   bp-quickcheck

@@ -23,13 +23,13 @@ ClientAliveCountMax 2
 LoginGraceTime 30
 EOF
 
-# Check ότι υπάρχει authorized_keys πριν disable τα passwords
+# Check that authorized_keys exists before disabling passwords
 if [[ -s /root/.ssh/authorized_keys ]]; then
-  ok "sshd: password auth disabled (root έχει authorized_keys)"
+  ok "sshd: password auth disabled (root has authorized_keys)"
   systemctl reload sshd || systemctl reload ssh
 else
-  warn "Δεν βρέθηκε /root/.ssh/authorized_keys — ΔΕΝ disable-άρω passwords"
-  warn "Πρόσθεσε public key πρώτα, μετά τρέξε ξανά για lockdown"
+  warn "/root/.ssh/authorized_keys not found — NOT disabling passwords"
+  warn "Add a public key first, then re-run for lockdown"
   rm -f "$sshd_cfg"
 fi
 
@@ -63,7 +63,7 @@ EOF
 sysctl -p /etc/sysctl.d/99-cardano-pool.conf >/dev/null
 ok "sysctl tuning applied"
 
-# Increase ulimits για containers
+# Increase ulimits for containers
 cat > /etc/security/limits.d/99-cardano.conf <<'EOF'
 * soft nofile 1048576
 * hard nofile 1048576

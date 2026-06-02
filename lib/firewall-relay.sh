@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# firewall-relay.sh — UFW για Relay (public-facing)
+# firewall-relay.sh — UFW for Relay (public-facing)
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/common.sh"

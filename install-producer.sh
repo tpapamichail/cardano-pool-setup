@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# install-producer.sh — One-shot setup για Cardano Block Producer
+# install-producer.sh — One-shot setup for Cardano Block Producer
 # Usage: sudo ./install-producer.sh
 # ============================================================
 set -uo pipefail
@@ -24,7 +24,7 @@ prompt POOL_NAME       "Pool name (ticker)"                              "MYPOOL
 prompt CARDANO_HOME    "Cardano root directory"                          "/opt/cardano"
 prompt RELAY_HOSTS     "Relay FQDNs (comma-separated)"                   "relay1.example.com,relay2.example.com,relay3.example.com"
 prompt RELAY_PORT      "Relay port"                                      "6000"
-prompt KEYS_SOURCE_DIR "Φάκελος με τα pool keys (cold.skey.gpg, vrf.*, hot.*, op.cert, pool.id)" "/tmp/pool-keys"
+prompt KEYS_SOURCE_DIR "Folder with pool keys (cold.skey.gpg, vrf.*, hot.*, op.cert, pool.id)" "/tmp/pool-keys"
 prompt CARDANO_NETWORK "Network"                                         "mainnet"
 prompt CARDANO_IMAGE   "Docker image"                                    "ghcr.io/blinklabs-io/cardano-node:latest"
 
@@ -61,7 +61,7 @@ cat <<EOF
   Telegram:    ${TELEGRAM_BOT_TOKEN:+enabled}${TELEGRAM_BOT_TOKEN:-disabled}
 EOF
 echo
-confirm "Συνεχίζουμε;" "yes" || die "Ακυρώθηκε."
+confirm "Continue?" "yes" || die "Cancelled."
 
 # ────────── Steps ──────────
 . "${LIB}/os-base.sh"
@@ -70,7 +70,7 @@ confirm "Συνεχίζουμε;" "yes" || die "Ακυρώθηκε."
 . "${LIB}/chrony.sh"
 . "${LIB}/hardening.sh"
 
-# Save config ΠΡΙΝ τα steps που το χρειάζονται
+# Save config BEFORE the steps that need it
 save_config
 
 . "${LIB}/configs-download.sh"
@@ -84,7 +84,7 @@ save_config
 # ────────── Final ──────────
 section "Done"
 ok "Producer container started"
-ok "Δοκίμασε: docker logs -f producer (ή 'bp-logs' σε νέο shell)"
-hint "Αναμένεται validation+sync. Μετά τρέξε: bp-preflight"
-hint "Για να ενεργοποιηθούν τα aliases: exec zsh ή ξανασυνδέσου με SSH"
+ok "Try: docker logs -f producer (or 'bp-logs' in a new shell)"
+hint "Expect validation+sync. Afterwards run: bp-preflight"
+hint "To activate aliases: exec zsh or reconnect via SSH"
 echo

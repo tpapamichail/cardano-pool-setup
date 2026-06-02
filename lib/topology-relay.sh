@@ -13,7 +13,7 @@ section "Relay Topology"
 
 topo="${CARDANO_CONFIG_DIR}/topology.json"
 
-# Local roots: το BP του pool σου
+# Local roots: your pool's BP
 local_aps='[]'
 if [[ -n "${BP_EXPECTED_IP:-}" ]]; then
   local_aps=$(echo '[]' | jq \
@@ -21,9 +21,9 @@ if [[ -n "${BP_EXPECTED_IP:-}" ]]; then
     '. += [{"address": $addr, "port": $port}]')
 fi
 
-# Sibling relays (αν έχει > 1)
+# Sibling relays (if more than 1)
 if [[ -n "${RELAY_HOSTS:-}" ]]; then
-  # Try να βρω τα δικά μου hostnames και να εξαιρέσω το παρόν host
+  # Try to find my own hostnames and exclude the current host
   myhost=$(hostname -f 2>/dev/null || hostname)
   IFS=',' read -ra RELAYS <<< "$RELAY_HOSTS"
   for host in "${RELAYS[@]}"; do

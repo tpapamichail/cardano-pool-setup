@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 # ============================================================
-# Cardano Relay aliases — parameterized από $CARDANO_HOME/config.env
+# Cardano Relay aliases — parameterized from $CARDANO_HOME/config.env
 # ============================================================
 
 : ${CARDANO_HOME:=/opt/cardano}
@@ -73,9 +73,9 @@ r-help() {
   printf "  ${CM}%-16s${CD}%s${N}\n" "r-disk"       "Disk usage"
   echo
   echo "${CC}── RAW CLI ─────────────────────────────────────────────────────────${N}"
-  printf "  ${CM}%-16s${CD}%s${N}\n" "cardano-cli"  "Full cardano-cli με mounts"
+  printf "  ${CM}%-16s${CD}%s${N}\n" "cardano-cli"  "Full cardano-cli with mounts"
   echo
-  echo "${DM}  r-help anytime για αυτό το menu${N}"
+  echo "${DM}  r-help anytime for this menu${N}"
   echo
 }
 
@@ -116,7 +116,7 @@ r-quickcheck() {
   fi
 }
 
-# Auto-run στο interactive shell
+# Auto-run on interactive shell
 if [[ -o interactive ]]; then
   r-help
   r-quickcheck

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# os-base.sh — Βασικά apt packages
+# os-base.sh — Base apt packages
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/common.sh"

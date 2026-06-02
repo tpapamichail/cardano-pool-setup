@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ============================================================
-# bp-preflight.sh v2 — Επαλήθευση ετοιμότητας Cardano Block Producer
+# bp-preflight.sh v2 — Cardano Block Producer readiness check
 #
-# Σημαντικές βελτιώσεις vs v1:
-#   • docker exec για read-only queries (γρηγορότερο, λιγότερος container startup overhead)
-#   • timeouts σε ΟΛΑ τα blocking docker/network calls
-#   • single docker-logs read στο Section 5 (αντί για πολλαπλά passes)
+# Key improvements vs v1:
+#   • docker exec for read-only queries (faster, less container startup overhead)
+#   • timeouts on ALL blocking docker/network calls
+#   • single docker-logs read in Section 5 (instead of multiple passes)
 #   • parallel relay reachability checks
-#   • realistic tip-lag thresholds (60s/180s αντί 30s/120s)
-#   • νέα: pool saturation, mempool size, GC pauses, send-side propagation
+#   • realistic tip-lag thresholds (60s/180s instead of 30s/120s)
+#   • new: pool saturation, mempool size, GC pauses, send-side propagation
 #   • --fast (skip 30s wait), --json (machine-readable), --no-telegram flags
-#   • optional Telegram alert σε αποτυχία
+#   • optional Telegram alert on failure
 #
 # Exit codes: 0 = ready, 1 = not ready, 2 = bad args
 # ============================================================
@@ -29,13 +29,13 @@ bp-preflight.sh v2 — Cardano BP preflight check
 Usage: $0 [OPTIONS]
 
 Options:
-  -f, --fast            Skip το 30s wait για chain progress check
-      --json            Output αποτελεσμάτων σε JSON (για monitoring)
-      --no-telegram     Μην στείλεις Telegram alert ακόμα κι αν υπάρχει token
-  -h, --help            Εμφάνιση αυτού του help
+  -f, --fast            Skip the 30s wait for chain progress check
+      --json            Output results as JSON (for monitoring)
+      --no-telegram     Do not send Telegram alert even if token is set
+  -h, --help            Show this help
 
 Environment:
-  TELEGRAM_BOT_TOKEN    Token (αν δεν τεθεί, alerts απενεργοποιημένα)
+  TELEGRAM_BOT_TOKEN    Token (if not set, alerts disabled)
   TELEGRAM_CHAT_ID      Chat ID
 EOF
 }
@@ -46,7 +46,7 @@ while [[ $# -gt 0 ]]; do
     --json)           OUTPUT_FORMAT=json; shift ;;
     --no-telegram)    ENABLE_TELEGRAM=no; shift ;;
     -h|--help)        show_help; exit 0 ;;
-    *) echo "Άγνωστο flag: $1" >&2; show_help >&2; exit 2 ;;
+    *) echo "Unknown flag: $1" >&2; show_help >&2; exit 2 ;;
   esac
 done
 
@@ -71,7 +71,7 @@ CONFIG_DIR="${CARDANO_CONFIG_DIR:-${CARDANO_HOME}/config/${CARDANO_NETWORK}}"
 CONTAINER_TOPOLOGY_PATH="/opt/cardano/config/${CARDANO_NETWORK}/topology.json"
 CONTAINER_METRICS_URL="http://localhost:12798/metrics"
 
-# Build EXPECTED_RELAYS array από RELAY_HOSTS (comma-separated)
+# Build EXPECTED_RELAYS array from RELAY_HOSTS (comma-separated)
 IFS=',' read -ra EXPECTED_RELAYS <<< "$RELAY_HOSTS"
 for i in "${!EXPECTED_RELAYS[@]}"; do
   EXPECTED_RELAYS[$i]=$(echo "${EXPECTED_RELAYS[$i]}" | xargs)
@@ -81,7 +81,7 @@ done
 SHELLEY_START_UNIX=1596059091
 BYRON_END_SLOT=4492800
 
-# Όρια (βελτιωμένα με βάση Cardano density 0.05)
+# Thresholds (improved based on Cardano density 0.05)
 TIP_LAG_OK=60      # P(gap > 60s) ≈ 4.6%
 TIP_LAG_WARN=180   # P(gap > 180s) ≈ 0.01%
 CHAIN_PROGRESS_WAIT=30
@@ -111,14 +111,14 @@ section() { [[ "$OUTPUT_FORMAT" == "text" ]] && echo -e "\n${B}── $1 ──$
 hint()    { [[ "$OUTPUT_FORMAT" == "text" ]] && echo -e "    ${D}$1${N}"; }
 
 # ─── Docker CLI Wrappers ────────────────────────────────────
-# Read-only queries: γρήγορα μέσω του running producer container
+# Read-only queries: fast via the running producer container
 CLI_READ() {
   timeout 30 docker exec \
     -e CARDANO_NODE_SOCKET_PATH=/ipc/node.socket \
     producer cardano-cli "$@" 2>/dev/null
 }
 
-# Queries που χρειάζονται keys: αργά λόγω container startup
+# Queries that need keys: slow due to container startup
 CLI_KEYS() {
   timeout 60 docker run --rm \
     -v "${IPC_DIR}:/ipc" \
@@ -136,7 +136,7 @@ QUERY_TIP() {
 
 # ─── Pre-flight: pool id ────────────────────────────────────
 if [[ ! -f "${POOL_DIR}/pool.id" ]]; then
-  echo -e "${R}✗ Δεν βρέθηκε ${POOL_DIR}/pool.id${N}" >&2
+  echo -e "${R}✗ Not found: ${POOL_DIR}/pool.id${N}" >&2
   exit 1
 fi
 POOL_ID_HEX=$(tr -d '[:space:]' < "${POOL_DIR}/pool.id")
@@ -149,7 +149,7 @@ if [[ "$OUTPUT_FORMAT" == "text" ]]; then
   echo -e "${B}╚══════════════════════════════════════════════════════════════════╝${N}"
 fi
 
-# Global vars που θα γεμίσουν τα sections
+# Global vars that will be populated by the sections
 tip_lag=0; remaining_kes=0; epoch=0; slot=0
 sat_pct=0; active_peers=0
 next_leader_slot=""; next_leader_eta=""
@@ -158,14 +158,14 @@ next_leader_slot=""; next_leader_eta=""
 section "1. Container & Chain Progress"
 
 if ! docker ps --format '{{.Names}}' | grep -q '^producer$'; then
-  err "Producer container δεν τρέχει — αδύνατο να συνεχίσουμε"
+  err "Producer container is not running — cannot continue"
   exit 1
 fi
 ok "Producer container running"
 
 tip=$(QUERY_TIP)
 if [[ -z "$tip" ]]; then
-  err "cardano-cli query tip απέτυχε ή timeout"
+  err "cardano-cli query tip failed or timed out"
   tip='{}'
 fi
 
@@ -178,28 +178,28 @@ block=$(echo "$tip" | jq -r '.block // 0')
 if [[ "$sync" == "100.00" ]]; then
   ok "Synced 100% — epoch ${epoch}, slot ${slot}, block ${block}"
 else
-  err "ΟΧΙ synced: ${sync}% — δεν θα παραχθεί block μέχρι να συγχρονιστεί"
+  err "NOT synced: ${sync}% — no block will be produced until synced"
 fi
 
-# Chain tip lag — το slotNum προχωράει μόνο σε νέο block, οπότε μετράμε
-# πόσο πίσω είμαστε από το expected current slot.
+# Chain tip lag — slotNum advances only on a new block, so we measure
+# how far behind we are from the expected current slot.
 wall_now=$(date +%s)
 expected_slot=$((wall_now - SHELLEY_START_UNIX + BYRON_END_SLOT))
 tip_lag=$((expected_slot - slot))
 
 if [[ $tip_lag -lt $TIP_LAG_OK ]]; then
-  ok "Chain tip lag: ${tip_lag}s (φυσιολογικό· P(gap>60s)≈4.6%)"
+  ok "Chain tip lag: ${tip_lag}s (normal · P(gap>60s)≈4.6%)"
 elif [[ $tip_lag -lt $TIP_LAG_WARN ]]; then
-  warn "Chain tip lag: ${tip_lag}s — οριακό, παρακολούθησε αν επιμένει"
+  warn "Chain tip lag: ${tip_lag}s — borderline, monitor if it persists"
 else
-  err "Chain tip lag: ${tip_lag}s — node δεν δέχεται blocks έγκαιρα"
+  err "Chain tip lag: ${tip_lag}s — node is not receiving blocks in time"
 fi
 
-# Chain progress check (skippable με --fast)
+# Chain progress check (skippable with --fast)
 if [[ $SKIP_WAIT -eq 1 ]]; then
   hint "Chain progress check skipped (--fast)"
 else
-  hint "Περιμένουμε ${CHAIN_PROGRESS_WAIT}s για νέο block..."
+  hint "Waiting ${CHAIN_PROGRESS_WAIT}s for a new block..."
   sleep $CHAIN_PROGRESS_WAIT
   tip2=$(QUERY_TIP)
   hash2=$(echo "$tip2" | jq -r '.hash // ""')
@@ -208,14 +208,14 @@ else
 
   if [[ "$hash1" != "$hash2" && -n "$hash2" ]]; then
     blocks_received=$((block_new - block))
-    ok "Chain progresses (${blocks_received} νέα blocks σε ${CHAIN_PROGRESS_WAIT}s)"
+    ok "Chain progresses (${blocks_received} new blocks in ${CHAIN_PROGRESS_WAIT}s)"
     slot=$slot_new
   else
-    warn "Κανένα νέο block σε ${CHAIN_PROGRESS_WAIT}s — sparse period ή propagation issue"
+    warn "No new block in ${CHAIN_PROGRESS_WAIT}s — sparse period or propagation issue"
   fi
 fi
 
-# Update current_slot για downstream sections
+# Update current_slot for downstream sections
 current_slot=${slot_new:-$slot}
 
 # ────────── 2. Time Sync (NTP) ──────────
@@ -231,11 +231,11 @@ if command -v chronyc >/dev/null 2>&1 && systemctl is-active --quiet chronyd 2>/
     'BEGIN { v = s*1000; if (v < 0) v = -v; printf "%d", v }')
 
   if [[ ${abs_ms:-9999} -lt 50 ]]; then
-    ok "NTP offset ${offset_sec}s (stratum ${stratum}, ${leap}) — εξαιρετικό"
+    ok "NTP offset ${offset_sec}s (stratum ${stratum}, ${leap}) — excellent"
   elif [[ ${abs_ms:-9999} -lt 200 ]]; then
-    warn "NTP offset ${offset_sec}s — οριακό, στόχευσε <50ms"
+    warn "NTP offset ${offset_sec}s — borderline, aim for <50ms"
   else
-    err "NTP offset ${offset_sec}s — ΘΑ ΧΑΣΕΙΣ blocks. Fix chrony ΑΜΕΣΑ."
+    err "NTP offset ${offset_sec}s — YOU WILL MISS blocks. Fix chrony IMMEDIATELY."
   fi
 
   if [[ "$leap" != "Normal" ]]; then
@@ -248,11 +248,11 @@ elif command -v ntpq >/dev/null 2>&1 && systemctl is-active --quiet ntpd 2>/dev/
     if [[ ${abs_ms:-9999} -lt 50 ]]; then
       ok "ntpd offset: ${offset}ms"
     else
-      warn "ntpd offset: ${offset}ms — εξέτασε chrony αντί ntpd"
+      warn "ntpd offset: ${offset}ms — consider chrony instead of ntpd"
     fi
   fi
 else
-  err "ΟΥΤΕ chrony ΟΥΤΕ ntpd ενεργό — apt install chrony τώρα"
+  err "Neither chrony nor ntpd active — apt install chrony now"
 fi
 
 # ────────── 3. System Resources ──────────
@@ -262,9 +262,9 @@ disk_used=$(df / | awk 'NR==2 {gsub("%",""); print $5}')
 if [[ $disk_used -lt 80 ]]; then
   ok "Disk usage / : ${disk_used}%"
 elif [[ $disk_used -lt 90 ]]; then
-  warn "Disk usage / : ${disk_used}% — καθάρισε σύντομα"
+  warn "Disk usage / : ${disk_used}% — clean up soon"
 else
-  err "Disk ${disk_used}% — ΚΡΙΣΙΜΟ, node θα κρασάρει"
+  err "Disk ${disk_used}% — CRITICAL, node will crash"
 fi
 
 data_used=$(timeout 5 docker exec producer df /data/db 2>/dev/null | awk 'NR==2 {gsub("%",""); print $5}')
@@ -276,7 +276,7 @@ if [[ -n "$data_used" ]]; then
   fi
 fi
 
-# Single docker stats call για να πάρουμε CPU+MEM+IO μαζί
+# Single docker stats call to get CPU+MEM+IO together
 stats=$(timeout 5 docker stats producer --no-stream --format '{{.MemPerc}}|{{.CPUPerc}}|{{.BlockIO}}' 2>/dev/null)
 mem_pct=$(echo "$stats" | cut -d'|' -f1 | tr -d '%')
 cpu_pct=$(echo "$stats" | cut -d'|' -f2 | tr -d '%')
@@ -286,16 +286,16 @@ mem_int=${mem_pct%.*}
 if [[ ${mem_int:-0} -lt 75 ]]; then
   ok "Container memory: ${mem_pct}%"
 elif [[ ${mem_int:-0} -lt 90 ]]; then
-  warn "Container memory: ${mem_pct}% — κοντά στο όριο"
+  warn "Container memory: ${mem_pct}% — close to limit"
 else
   err "Container memory: ${mem_pct}% — OOM risk"
 fi
 
 cpu_int=${cpu_pct%.*}
-if [[ ${cpu_int:-0} -lt 200 ]]; then  # 200% = 2 cores fully used (OK σε multi-core)
+if [[ ${cpu_int:-0} -lt 200 ]]; then  # 200% = 2 cores fully used (OK on multi-core)
   ok "Container CPU: ${cpu_pct}%"
 else
-  warn "Container CPU: ${cpu_pct}% — υψηλό φορτίο"
+  warn "Container CPU: ${cpu_pct}% — high load"
 fi
 
 load1=$(awk '{print $1}' /proc/loadavg)
@@ -304,7 +304,7 @@ load_pct=$(awk -v l="$load1" -v c="$cores" 'BEGIN {printf "%d", (l/c)*100}')
 if [[ $load_pct -lt 80 ]]; then
   ok "Host load: ${load1} (${load_pct}% of ${cores} cores)"
 else
-  warn "Host load: ${load1} (${load_pct}% of ${cores} cores) — υψηλό"
+  warn "Host load: ${load1} (${load_pct}% of ${cores} cores) — high"
 fi
 
 # ────────── 4. VRF Key Permissions ──────────
@@ -315,31 +315,31 @@ if [[ -f "${POOL_DIR}/vrf.skey" ]]; then
   if [[ "$vrf_perms" == "400" || "$vrf_perms" == "600" ]]; then
     ok "VRF key permissions: ${vrf_perms}"
   else
-    err "VRF key permissions ${vrf_perms} — node θα αρνηθεί restart"
+    err "VRF key permissions ${vrf_perms} — node will refuse to restart"
     hint "Fix: chmod 400 ${POOL_DIR}/vrf.skey"
   fi
   vrf_owner=$(stat -c '%U' "${POOL_DIR}/vrf.skey")
   if [[ "$vrf_owner" == "UNKNOWN" ]]; then
     vrf_uid=$(stat -c '%u' "${POOL_DIR}/vrf.skey")
-    ok "VRF key owner: UID ${vrf_uid} (no /etc/passwd entry — φυσιολογικό σε containers)"
+    ok "VRF key owner: UID ${vrf_uid} (no /etc/passwd entry — normal in containers)"
   else
     ok "VRF key owner: ${vrf_owner}"
   fi
 else
-  err "Δεν βρέθηκε ${POOL_DIR}/vrf.skey"
+  err "Not found: ${POOL_DIR}/vrf.skey"
 fi
 
 if [[ -f "${BP_KEYS_DIR}/node.cert" ]]; then
   cert_perms=$(stat -c '%a' "${BP_KEYS_DIR}/node.cert")
   ok "Op cert exists (perms ${cert_perms})"
 else
-  err "Δεν βρέθηκε ${BP_KEYS_DIR}/node.cert"
+  err "Not found: ${BP_KEYS_DIR}/node.cert"
 fi
 
 # ────────── 5. Forge Loop & Critical Errors ──────────
 section "5. Forge Loop"
 
-# Single logs read — re-use σε όλους τους ελέγχους
+# Single logs read — re-used across all checks
 logs_recent=$(timeout 10 docker logs --tail 200 producer 2>&1 || true)
 logs_24h=$(timeout 30 docker logs --since 24h producer 2>&1 || true)
 logs_7d=$(timeout 30 docker logs --since 7d producer 2>&1 || true)
@@ -347,46 +347,46 @@ logs_7d=$(timeout 30 docker logs --since 7d producer 2>&1 || true)
 # Forge loop heartbeat
 recent_forge=$(echo "$logs_recent" | grep -c "Forge.Loop.StartLeadershipCheck" || true)
 if [[ ${recent_forge:-0} -gt 10 ]]; then
-  ok "Forge loop ενεργό (${recent_forge} leadership checks/200 lines)"
+  ok "Forge loop active (${recent_forge} leadership checks/200 lines)"
 else
-  err "Δεν εκτελείται forge loop επαρκώς — node ίσως δεν είναι σε BP mode"
+  err "Forge loop not running adequately — node may not be in BP mode"
 fi
 
-# Critical patterns (σιωπηλές αποτυχίες)
+# Critical patterns (silent failures)
 critical_regex='TraceNoLedgerView|TraceForgeStateUpdateError|TraceNodeCannotForge|KESKeyAlreadyPoisoned|TraceForgedInvalidBlock'
 crit_count=$(echo "$logs_24h" | grep -cE "$critical_regex" || true)
 if [[ ${crit_count:-0} -gt 0 ]]; then
-  err "${crit_count}x critical forge errors τις τελευταίες 24h — ΣΙΩΠΗΛΗ ΑΠΟΤΥΧΙΑ"
+  err "${crit_count}x critical forge errors in the last 24h — SILENT FAILURE"
   echo "$logs_24h" | grep -E "$critical_regex" | tail -3 | sed 's/^/    /'
 else
-  ok "Καμία κρίσιμη forge αποτυχία στις τελευταίες 24h"
+  ok "No critical forge failures in the last 24h"
 fi
 
-# Generic forge errors — exclude τα critical που ήδη μέτρησα
+# Generic forge errors — exclude the critical ones already counted
 generic_errors=$(echo "$logs_24h" | grep -iE "Forge.*Error|Forge.*Failed" \
   | grep -cvE "$critical_regex" || true)
 if [[ ${generic_errors:-0} -eq 0 ]]; then
-  ok "Καμία γενική αποτυχία στο forging (24h)"
+  ok "No generic forging failures (24h)"
 else
-  warn "${generic_errors} γενικά forge errors (24h)"
+  warn "${generic_errors} generic forge errors (24h)"
 fi
 
-# Last adopted block (max 7 ημέρες πίσω)
+# Last adopted block (up to 7 days back)
 last_forged=$(echo "$logs_7d" | grep -E "TraceAdoptedBlock|AdoptedBlock" | tail -1 | awk '{print $1, $2}')
 if [[ -n "$last_forged" ]]; then
-  ok "Τελευταίο adopted block: ${last_forged}"
+  ok "Last adopted block: ${last_forged}"
 else
-  warn "Κανένα TraceAdoptedBlock τις τελευταίες 7 ημέρες (φυσιολογικό για μικρά pools)"
+  warn "No TraceAdoptedBlock in the last 7 days (normal for small pools)"
 fi
 
-# GC pauses — μπορούν να σου κάψουν slot
+# GC pauses — can cause missed slots
 gc_count=$(echo "$logs_24h" | grep -cE "GcPause|gcMajorTime" || true)
 if [[ ${gc_count:-0} -lt 100 ]]; then
-  ok "GC events (24h): ${gc_count} — φυσιολογικό"
+  ok "GC events (24h): ${gc_count} — normal"
 elif [[ ${gc_count:-0} -lt 500 ]]; then
-  warn "GC events (24h): ${gc_count} — αυξημένα, παρακολούθησε memory"
+  warn "GC events (24h): ${gc_count} — elevated, monitor memory"
 else
-  err "GC events (24h): ${gc_count} — memory pressure, πιθανές απώλειες slots"
+  err "GC events (24h): ${gc_count} — memory pressure, possible slot losses"
 fi
 
 # ────────── 6. KES & Op Cert ──────────
@@ -403,9 +403,9 @@ if [[ -n "$kes" ]]; then
   on_chain=$(echo "$kes" | jq -r '.qKesNodeStateOperationalCertificateNumber // 0')
 
   if [[ $cur -ge $start ]] && [[ $cur -le $end ]]; then
-    ok "KES period ${cur} εντός valid interval [${start}, ${end}]"
+    ok "KES period ${cur} within valid interval [${start}, ${end}]"
   else
-    err "KES period ${cur} ΕΚΤΟΣ [${start}, ${end}] — issue new op cert"
+    err "KES period ${cur} OUTSIDE [${start}, ${end}] — issue new op cert"
   fi
 
   # 1 period ≈ 36 hours
@@ -415,9 +415,9 @@ if [[ -n "$kes" ]]; then
   if [[ $remaining_kes -le 0 ]]; then
     err "KES EXPIRED"
   elif [[ $remaining_kes -lt 10 ]]; then
-    err "KES expires σε ~${days_remaining}d ${hours_remaining}h (${remaining_kes} periods) — issue new op cert ΤΩΡΑ"
+    err "KES expires in ~${days_remaining}d ${hours_remaining}h (${remaining_kes} periods) — issue new op cert NOW"
   elif [[ $remaining_kes -lt 30 ]]; then
-    warn "KES expires σε ~${days_remaining}d (${remaining_kes} periods) — προγραμμάτισε renewal"
+    warn "KES expires in ~${days_remaining}d (${remaining_kes} periods) — schedule renewal"
   else
     ok "KES remaining: ${remaining_kes} periods (~${days_remaining}d)"
   fi
@@ -426,12 +426,12 @@ if [[ -n "$kes" ]]; then
   if [[ $diff -eq 0 ]]; then
     ok "Op cert sync ✓ (counter ${on_disk} = on-chain)"
   elif [[ $diff -eq 1 ]]; then
-    warn "Op cert ahead by 1 (on-disk=${on_disk}, on-chain=${on_chain}) — θα συγχρονιστεί με το πρώτο block"
+    warn "Op cert ahead by 1 (on-disk=${on_disk}, on-chain=${on_chain}) — will sync on the next block"
   else
-    err "Op cert mismatch: on-disk=${on_disk}, on-chain=${on_chain} — διαφορά ${diff}"
+    err "Op cert mismatch: on-disk=${on_disk}, on-chain=${on_chain} — difference ${diff}"
   fi
 else
-  err "Δεν μπορώ να διαβάσω KES info"
+  err "Cannot read KES info"
 fi
 
 # ────────── 7. Forging Enabled (metrics) ──────────
@@ -439,20 +439,20 @@ section "7. Forging Enabled (metrics)"
 
 metrics=$(timeout 10 docker exec producer curl -s "${CONTAINER_METRICS_URL}" 2>/dev/null || true)
 
-# Strict awk matching με trailing space για να μην πιάνει similar metric names
+# Strict awk matching with trailing space to avoid matching similar metric names
 forging=$(echo "$metrics" | awk '/^cardano_node_metrics_forging_enabled_int / {print $2}')
 if [[ "${forging:-0}" == "1" ]]; then
-  ok "forging_enabled = 1 (BP πλήρως ενεργό)"
+  ok "forging_enabled = 1 (BP fully active)"
 else
-  err "forging_enabled != 1 — keys ίσως δεν φορτώθηκαν"
+  err "forging_enabled != 1 — keys may not have been loaded"
 fi
 
 kes_metric=$(echo "$metrics" | awk '/^cardano_node_metrics_currentKESPeriod_int / {print $2}')
 if [[ -n "$kes_metric" ]]; then
-  ok "KES key loaded στο runtime (period ${kes_metric})"
+  ok "KES key loaded at runtime (period ${kes_metric})"
 fi
 
-# Mempool size — early indicator για overload
+# Mempool size — early indicator for overload
 mem_txs=$(echo "$metrics" | awk '/^cardano_node_metrics_txsInMempool_int / {print $2}')
 mem_bytes=$(echo "$metrics" | awk '/^cardano_node_metrics_mempoolBytes_int / {print $2}')
 if [[ -n "$mem_txs" ]]; then
@@ -461,7 +461,7 @@ if [[ -n "$mem_txs" ]]; then
 fi
 
 # ── Send-side propagation ──
-# P2P-first: στις νέες εκδόσεις λέγονται *_counter (όχι *_count_int)
+# P2P-first: in newer versions named *_counter (not *_count_int)
 served_h=$(echo "$metrics" | awk '/^cardano_node_metrics_served_header_counter / {print $2}')
 served_b=$(echo "$metrics" | awk '/^cardano_node_metrics_served_block_counter / {print $2}')
 served_chainsync_h=$(echo "$metrics" | awk '/^cardano_node_metrics_ChainSync_HeadersServed_counter / {print $2}')
@@ -472,18 +472,18 @@ served_chainsync_h=$(echo "$metrics" | awk '/^cardano_node_metrics_ChainSync_Hea
 
 served_h=${served_h:-0}; served_b=${served_b:-0}; served_chainsync_h=${served_chainsync_h:-0}
 
-# Στο BP, το serving μπορεί να είναι χαμηλότερο γιατί έχει μόνο 3-4 relays να σερβίρει
+# On the BP, serving may be lower because it only serves 3-4 relays
 if [[ $served_h -gt 0 ]] && [[ $served_b -gt 0 ]]; then
   ok "Send-side propagation: ${served_h} headers / ${served_b} blocks served"
   [[ $served_chainsync_h -gt 0 ]] && hint "ChainSync headers served: ${served_chainsync_h}"
 elif [[ $served_h -gt 0 ]] || [[ $served_chainsync_h -gt 0 ]]; then
-  warn "Serving headers (${served_h}/${served_chainsync_h}) αλλά μηδέν blocks — relays δεν τραβάνε blocks σου"
+  warn "Serving headers (${served_h}/${served_chainsync_h}) but zero blocks — relays are not pulling your blocks"
 else
-  err "Served headers=${served_h}, blocks=${served_b} — relays δεν fetch-άρουν από εσένα"
+  err "Served headers=${served_h}, blocks=${served_b} — relays are not fetching from you"
 fi
 
-# ── Block fetch quality (πόσο γρήγορα κατεβάζει blocks από relays) ──
-# Κρίσιμο για BP: αν είναι αργό, μπορεί να παράξεις block πάνω σε stale tip
+# ── Block fetch quality (how fast it downloads blocks from relays) ──
+# Critical for BP: if slow, you may produce a block on a stale tip
 blockdelay=$(echo "$metrics" | awk '/^cardano_node_metrics_blockfetchclient_blockdelay_real / {print $2}')
 cdf_one=$(echo "$metrics" | awk '/^cardano_node_metrics_blockfetchclient_blockdelay_cdfOne_real / {print $2}')
 cdf_three=$(echo "$metrics" | awk '/^cardano_node_metrics_blockfetchclient_blockdelay_cdfThree_real / {print $2}')
@@ -493,13 +493,13 @@ late=$(echo "$metrics" | awk '/^cardano_node_metrics_blockfetchclient_lateblocks
 if [[ -n "$blockdelay" ]]; then
   delay_ms=$(awk -v d="$blockdelay" 'BEGIN {printf "%d", d*1000}')
   if [[ $delay_ms -lt 500 ]]; then
-    ok "Block fetch delay: ${delay_ms}ms (εξαιρετικό)"
+    ok "Block fetch delay: ${delay_ms}ms (excellent)"
   elif [[ $delay_ms -lt 1000 ]]; then
     ok "Block fetch delay: ${delay_ms}ms"
   elif [[ $delay_ms -lt 3000 ]]; then
-    warn "Block fetch delay: ${delay_ms}ms — αργό, κίνδυνος stale tip"
+    warn "Block fetch delay: ${delay_ms}ms — slow, stale tip risk"
   else
-    err "Block fetch delay: ${delay_ms}ms — θα παράγεις blocks σε λάθος tip"
+    err "Block fetch delay: ${delay_ms}ms — you will produce blocks on the wrong tip"
   fi
 fi
 
@@ -512,25 +512,25 @@ if [[ -n "$cdf_one" ]]; then
   if [[ $cdf_one_int -ge 95 ]]; then
     ok "Block diffusion: ${cdf_one_pct}% <1s, ${cdf_three_pct}% <3s, ${cdf_five_pct}% <5s"
   elif [[ $cdf_one_int -ge 85 ]]; then
-    warn "Block diffusion: μόνο ${cdf_one_pct}% blocks φτάνουν <1s (στόχος ≥95%)"
+    warn "Block diffusion: only ${cdf_one_pct}% blocks arrive <1s (target ≥95%)"
   else
-    err "Block diffusion αργή: ${cdf_one_pct}% <1s — height battles σε κίνδυνο"
+    err "Block diffusion slow: ${cdf_one_pct}% <1s — height battles at risk"
   fi
 fi
 
 if [[ -n "$late" ]]; then
   if [[ ${late:-0} -lt 10 ]]; then
-    ok "Late blocks: ${late} (αμελητέο)"
+    ok "Late blocks: ${late} (negligible)"
   elif [[ ${late:-0} -lt 100 ]]; then
     warn "Late blocks: ${late}"
   else
-    err "Late blocks: ${late} — σοβαρό propagation issue"
+    err "Late blocks: ${late} — serious propagation issue"
   fi
 fi
 
 # ────────── 8. Leadership Schedule ──────────
 section "8. Leadership Schedule"
-hint "Παίρνει 5-10s..."
+hint "Takes 5-10s..."
 
 schedule_tmp=$(mktemp)
 CLI_KEYS query leadership-schedule \
@@ -570,41 +570,41 @@ if [[ $parsed -eq 1 ]] && [[ $slot_count -gt 0 ]]; then
   next_slot=$(echo "$all_slots" | awk -v cur="$current_slot" '$1 > cur {print; exit}')
   first_slot=$(echo "$all_slots" | head -1)
 
-  ok "Leadership schedule OK — ${slot_count} slots για epoch ${epoch}"
+  ok "Leadership schedule OK — ${slot_count} slots for epoch ${epoch}"
 
   if [[ -n "$next_slot" ]]; then
     next_leader_slot=$next_slot
     seconds_until=$((next_slot - current_slot))
     next_leader_eta=$seconds_until
     if [[ $seconds_until -lt 3600 ]]; then
-      warn "ΕΠΟΜΕΝΟ block σε ${seconds_until}s ($((seconds_until/60))m) — slot ${next_slot}"
+      warn "NEXT block in ${seconds_until}s ($((seconds_until/60))m) — slot ${next_slot}"
     elif [[ $seconds_until -lt 86400 ]]; then
-      ok "Επόμενο block σε $((seconds_until/3600))h $((seconds_until%3600/60))m — slot ${next_slot}"
+      ok "Next block in $((seconds_until/3600))h $((seconds_until%3600/60))m — slot ${next_slot}"
     else
-      ok "Επόμενο block σε $((seconds_until/86400))d $((seconds_until%86400/3600))h — slot ${next_slot}"
+      ok "Next block in $((seconds_until/86400))d $((seconds_until%86400/3600))h — slot ${next_slot}"
     fi
   elif [[ -n "$first_slot" ]]; then
     past_count=$(echo "$all_slots" | awk -v cur="$current_slot" '$1 <= cur' | wc -l)
-    ok "Όλα τα ${past_count} scheduled slots έχουν περάσει σε αυτό το epoch"
+    ok "All ${past_count} scheduled slots have passed this epoch"
   fi
 
 elif [[ $parsed -eq 1 ]] && [[ $slot_count -eq 0 ]]; then
-  warn "0 scheduled slots για epoch ${epoch} — δεν θα παίξεις block αυτό το epoch"
-  hint "Φυσιολογικό για pools με χαμηλό active stake"
+  warn "0 scheduled slots for epoch ${epoch} — no block this epoch"
+  hint "Normal for pools with low active stake"
 
 elif echo "$schedule" | grep -qiE 'error|fail|exception|cannot|usage:|invalid'; then
-  err "Leadership schedule απέτυχε. Πρώτες 10 γραμμές:"
+  err "Leadership schedule failed. First 10 lines:"
   echo "$schedule" | head -10 | sed 's/^/    /'
-  echo "$schedule" | grep -qi "genesis" && hint "→ Έλεγξε path του genesis"
-  echo "$schedule" | grep -qi "vrf"     && hint "→ Έλεγξε VRF key"
-  echo "$schedule" | grep -qi "usage"   && hint "→ Πιθανή αλλαγή syntax σε νέα cardano-cli"
-  echo "$schedule" | grep -qi "era"     && hint "→ Era mismatch — δοκίμασε --next αντί --current"
+  echo "$schedule" | grep -qi "genesis" && hint "→ Check genesis path"
+  echo "$schedule" | grep -qi "vrf"     && hint "→ Check VRF key"
+  echo "$schedule" | grep -qi "usage"   && hint "→ Possible syntax change in newer cardano-cli"
+  echo "$schedule" | grep -qi "era"     && hint "→ Era mismatch — try --next instead of --current"
 else
   debug_file="/tmp/leadership-schedule-debug-$(date +%s).txt"
   cp "$schedule_tmp" "$debug_file"
-  warn "Άγνωστο output. Πρώτες 10 γραμμές:"
+  warn "Unknown output. First 10 lines:"
   echo "$schedule" | head -10 | sed 's/^/    /'
-  hint "Πλήρες output: ${debug_file}"
+  hint "Full output: ${debug_file}"
 fi
 
 rm -f "$schedule_tmp"
@@ -615,13 +615,13 @@ section "9. Pool On-Chain"
 pool_state=$(CLI_READ query pool-state --${CARDANO_NETWORK} --stake-pool-id "$POOL_ID_HEX" 2>/dev/null)
 
 if echo "$pool_state" | jq -e --arg pid "$POOL_ID_HEX" '.[$pid].poolParams' >/dev/null 2>&1; then
-  ok "Pool registered & found στο ledger"
+  ok "Pool registered & found in the ledger"
 
   retiring=$(echo "$pool_state" | jq -r --arg pid "$POOL_ID_HEX" '.[$pid].retiring')
   if [[ "$retiring" == "null" || -z "$retiring" ]]; then
-    ok "Pool δεν είναι σε retiring state"
+    ok "Pool is not in retiring state"
   else
-    err "Pool σε RETIRING state — αποχώρηση στο epoch ${retiring}"
+    err "Pool is in RETIRING state — retirement at epoch ${retiring}"
   fi
 
   future=$(echo "$pool_state" | jq -r --arg pid "$POOL_ID_HEX" '.[$pid].futurePoolParams')
@@ -660,9 +660,9 @@ if echo "$pool_state" | jq -e --arg pid "$POOL_ID_HEX" '.[$pid].poolParams' >/de
       sat_pct=$(( go_ada * 100 / sat_point ))
 
       if [[ $sat_pct -gt 100 ]]; then
-        err "Pool OVER-SATURATED: ${sat_pct}% (πάνω από ${sat_point} ADA) — κόβει rewards"
+        err "Pool OVER-SATURATED: ${sat_pct}% (above ${sat_point} ADA) — rewards are cut"
       elif [[ $sat_pct -gt 90 ]]; then
-        warn "Saturation ${sat_pct}% (από ${sat_point} ADA) — κοντά στο όριο"
+        warn "Saturation ${sat_pct}% (of ${sat_point} ADA) — close to limit"
       else
         ok "Saturation: ${sat_pct}% (max ${sat_point} ADA, k=${k_param})"
       fi
@@ -672,14 +672,14 @@ if echo "$pool_state" | jq -e --arg pid "$POOL_ID_HEX" '.[$pid].poolParams' >/de
         ok "Pledge satisfied (active stake ≥ pledge)"
       else
         err "PLEDGE NOT MET — active stake ${go_ada} < pledge ${pledge_ada} ADA"
-        hint "Δεν θα παραχθούν blocks σε αυτό το epoch"
+        hint "No blocks will be produced this epoch"
       fi
     else
-      err "ZERO active stake — δεν θα προγραμματιστούν blocks"
+      err "ZERO active stake — no blocks will be scheduled"
     fi
   fi
 else
-  err "Pool ΔΕΝ βρέθηκε στο ledger — registration issue"
+  err "Pool NOT found in the ledger — registration issue"
 fi
 
 # ────────── 10. Relay Reachability (Parallel) ──────────
@@ -689,10 +689,10 @@ relays_onchain=$(echo "$pool_state" | jq -r --arg pid "$POOL_ID_HEX" \
   '.[$pid].poolParams.spsRelays[]?."single host name" | "\(.dnsName):\(.port)"' 2>/dev/null)
 
 if [[ -z "$relays_onchain" ]]; then
-  warn "Δεν βρήκα DNS-based relays στο pool params"
+  warn "No DNS-based relays found in pool params"
 fi
 
-# Parallel reachability — write results σε temp dir
+# Parallel reachability — write results to temp dir
 relay_tmp=$(mktemp -d)
 trap "rm -rf $relay_tmp" EXIT
 
@@ -713,13 +713,13 @@ while IFS=: read -r host port; do
 done <<< "$relays_onchain"
 wait
 
-# Διάβασε αποτελέσματα
+# Read results
 for result_file in "${relay_tmp}"/r*; do
   [[ -f "$result_file" ]] || continue
   IFS='|' read -r status host endpoint < "$result_file"
   case "$status" in
     OK)        ok "Relay ${host} (${endpoint}) reachable" ;;
-    DNS_FAIL)  err "DNS fail: ${host} δεν resolve-άρει" ;;
+    DNS_FAIL)  err "DNS fail: ${host} does not resolve" ;;
     UNREACH)   err "Relay ${host} (${endpoint}) UNREACHABLE — block won't propagate" ;;
   esac
 done
@@ -730,9 +730,9 @@ section "11. Block Propagation"
 active_peers=""
 peer_source=""
 
-# Tier 1: P2P metrics (σωστά names με capital case + strict matching)
-# Στο BP περιμένουμε λίγα peers (συνήθως μόνο οι 3-4 expected relays)
-# γι' αυτό μετράμε connections, όχι hot peers
+# Tier 1: P2P metrics (correct names with capital case + strict matching)
+# On the BP we expect few peers (usually only 3-4 expected relays)
+# so we count connections, not hot peers
 for metric_name in \
   "cardano_node_metrics_connectionManager_duplexConns_int" \
   "cardano_node_metrics_connectionManager_outboundConns_int" \
@@ -778,15 +778,15 @@ if [[ -z "$active_peers" ]]; then
 fi
 
 if [[ -z "$active_peers" ]]; then
-  err "Δεν μπόρεσα να μετρήσω peers"
+  err "Could not count peers"
   active_peers=0
 elif [[ "$active_peers" -gt 0 ]]; then
-  ok "Active peers: ${active_peers} (πηγή: ${peer_source})"
+  ok "Active peers: ${active_peers} (source: ${peer_source})"
 else
   err "0 active peers (${peer_source}) — block won't propagate"
 fi
 
-# ── Detailed P2P breakdown (αν διαθέσιμο) ──
+# ── Detailed P2P breakdown (if available) ──
 p2p_hot=$(echo "$metrics"  | awk '/^cardano_node_metrics_peerSelection_Hot_int / {print $2}')
 p2p_warm=$(echo "$metrics" | awk '/^cardano_node_metrics_peerSelection_Warm_int / {print $2}')
 p2p_cold=$(echo "$metrics" | awk '/^cardano_node_metrics_peerSelection_Cold_int / {print $2}')
@@ -797,11 +797,11 @@ duplex=$(echo "$metrics" | awk '/^cardano_node_metrics_connectionManager_duplexC
 if [[ -n "$p2p_hot" ]]; then
   ok "P2P breakdown — hot: ${p2p_hot:-0}, warm: ${p2p_warm:-0}, cold: ${p2p_cold:-0}, active: ${p2p_active:-0}"
 
-  # Στο BP, ο local root (relay σου) πρέπει να είναι active
+  # On the BP, the local root (your relay) must be active
   if [[ -n "$local_root_active" ]] && [[ ${local_root_active:-0} -gt 0 ]]; then
-    ok "Active local root peers: ${local_root_active} (relay σου συνδεδεμένος)"
+    ok "Active local root peers: ${local_root_active} (your relay is connected)"
   else
-    err "0 active local root peers — ο BP δεν συνδέεται με τους δικούς σου relays!"
+    err "0 active local root peers — BP is not connected to your own relays!"
   fi
 
   if [[ -n "$duplex" ]] && [[ ${duplex:-0} -gt 0 ]]; then
@@ -809,10 +809,10 @@ if [[ -n "$p2p_hot" ]]; then
   fi
 fi
 
-# Σύγκριση με expected relays
+# Compare with expected relays
 expected_count=${#EXPECTED_RELAYS[@]}
 if [[ -n "$active_peers" ]] && [[ "$active_peers" -lt "$expected_count" ]]; then
-  warn "Active peers (${active_peers}) < expected relays (${expected_count}) — μερικοί unreachable"
+  warn "Active peers (${active_peers}) < expected relays (${expected_count}) — some unreachable"
 fi
 
 # ────────── 12. BP Topology Lockdown ──────────
@@ -834,41 +834,41 @@ if [[ -n "$topology_json" ]]; then
       fi
     done
     if [[ $found -eq 0 ]]; then
-      err "BP topology έχει unknown peer: ${peer} — πιθανή διαρροή IP"
+      err "BP topology has unknown peer: ${peer} — possible IP leak"
       unknown_peers=$((unknown_peers + 1))
     fi
   done
 
   if [[ $unknown_peers -eq 0 ]] && [[ -n "$topology_peers" ]]; then
-    ok "BP topology lockdown OK — μόνο γνωστά relays"
+    ok "BP topology lockdown OK — only known relays"
   fi
 
   configured_count=$(echo "$topology_peers" | grep -c . || true)
   if [[ ${configured_count:-0} -lt $expected_count ]]; then
-    warn "Topology έχει μόνο ${configured_count}/${expected_count} expected relays — μειωμένη redundancy"
+    warn "Topology has only ${configured_count}/${expected_count} expected relays — reduced redundancy"
   fi
 
-  # Check για useLedgerAfterSlot (legacy) ή useLedgerPeers (P2P)
+  # Check for useLedgerAfterSlot (legacy) or useLedgerPeers (P2P)
   use_ledger_legacy=$(echo "$topology_json" | jq -r '.useLedgerAfterSlot // "missing"')
   use_ledger_p2p=$(echo "$topology_json" | jq -r '.useLedgerPeers.useLedgerAfterSlot // "missing"')
 
   if [[ "$use_ledger_legacy" == "-1" || "$use_ledger_legacy" == "missing" ]] && \
      [[ "$use_ledger_p2p" == "-1" || "$use_ledger_p2p" == "missing" ]]; then
-    ok "Ledger peer discovery disabled — BP δεν διαρρέει IP"
+    ok "Ledger peer discovery disabled — BP does not leak IP"
   elif [[ "$use_ledger_p2p" != "missing" ]]; then
-    err "useLedgerPeers.useLedgerAfterSlot=${use_ledger_p2p} — BP κάνει peer discovery (διαρροή IP)"
+    err "useLedgerPeers.useLedgerAfterSlot=${use_ledger_p2p} — BP is doing peer discovery (IP leak)"
   else
-    err "useLedgerAfterSlot=${use_ledger_legacy} — BP κάνει peer discovery (διαρροή IP)"
+    err "useLedgerAfterSlot=${use_ledger_legacy} — BP is doing peer discovery (IP leak)"
   fi
 else
-  warn "Δεν μπόρεσα να διαβάσω ${CONTAINER_TOPOLOGY_PATH}"
+  warn "Could not read ${CONTAINER_TOPOLOGY_PATH}"
 fi
 
-# ─────────────────── Σύνοψη ───────────────────
+# ─────────────────── Summary ───────────────────
 if [[ "$OUTPUT_FORMAT" == "text" ]]; then
   echo
   echo -e "${B}═══════════════════════════════════════════════${N}"
-  echo -e "${B} Αποτελέσματα${N}"
+  echo -e "${B} Results${N}"
   echo -e "${B}═══════════════════════════════════════════════${N}"
   echo -e "  ${G}✓ Passed:${N}   ${PASS}"
   echo -e "  ${Y}⚠ Warnings:${N} ${WARN}"
@@ -876,13 +876,13 @@ if [[ "$OUTPUT_FORMAT" == "text" ]]; then
   echo
 
   if [[ $FAIL -eq 0 ]] && [[ $WARN -le 2 ]]; then
-    echo -e "${G}${B} ✓ READY${N} — Ο BP θα παράξει block επιτυχώς όταν έρθει η σειρά του.\n"
+    echo -e "${G}${B} ✓ READY${N} — The BP will produce a block successfully when its turn comes.\n"
     EXIT_CODE=0
   elif [[ $FAIL -eq 0 ]]; then
-    echo -e "${Y}${B} ⚠ READY με προσοχή${N} — Έλεγξε τα warnings.\n"
+    echo -e "${Y}${B} ⚠ READY with caution${N} — Check the warnings.\n"
     EXIT_CODE=0
   else
-    echo -e "${R}${B} ✗ NOT READY${N} — ${FAIL} προβλήματα θα εμποδίσουν παραγωγή.\n"
+    echo -e "${R}${B} ✗ NOT READY${N} — ${FAIL} problems will prevent block production.\n"
     EXIT_CODE=1
   fi
 fi
@@ -891,7 +891,7 @@ fi
 if [[ "$OUTPUT_FORMAT" == "json" ]]; then
   ready=$(if [[ $FAIL -eq 0 ]]; then echo true; else echo false; fi)
   
-  # Convert arrays σε JSON
+  # Convert arrays to JSON
   warn_json=$(printf '%s\n' "${WARNINGS[@]}" | jq -R . | jq -s . 2>/dev/null || echo '[]')
   fail_json=$(printf '%s\n' "${FAILURES[@]}" | jq -R . | jq -s . 2>/dev/null || echo '[]')
 

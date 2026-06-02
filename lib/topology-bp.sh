@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# topology-bp.sh — Generate BP topology (locked στους RELAY_HOSTS, no ledger discovery)
+# topology-bp.sh — Generate BP topology (locked to RELAY_HOSTS, no ledger discovery)
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/common.sh"
@@ -23,7 +23,7 @@ for host in "${RELAYS[@]}"; do
     '. += [{"address": $addr, "port": $port}]')
 done
 
-# BP topology: ΜΟΝΟ local roots (οι relays σου), no public roots, no ledger peers
+# BP topology: ONLY local roots (your relays), no public roots, no ledger peers
 jq -n --argjson aps "$access_points" '{
   localRoots: [
     {
@@ -43,4 +43,4 @@ jq -n --argjson aps "$access_points" '{
 }' > "$topo"
 
 ok "BP topology written: $topo"
-ok "Locked σε ${#RELAYS[@]} relays, no ledger discovery"
+ok "Locked to ${#RELAYS[@]} relays, no ledger discovery"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# common.sh — Shared helpers για όλα τα install modules
+# common.sh — Shared helpers for all install modules
 # ============================================================
 
 # Colors
@@ -20,7 +20,7 @@ section() { echo -e "\n${B}── $* ──${N}"; }
 hint()    { echo -e "    ${D}$*${N}"; }
 die()     { err "$*"; exit 1; }
 
-# Prompt με default value
+# Prompt with default value
 # Usage: prompt VAR_NAME "Question" [default]
 prompt() {
   local var="$1" question="$2" default="${3:-}"
@@ -35,7 +35,7 @@ prompt() {
 }
 
 # Yes/No prompt
-# Usage: if confirm "Συνεχίζουμε;"; then ...
+# Usage: if confirm "Continue?"; then ...
 confirm() {
   local question="$1" default="${2:-no}" reply
   local hint_str
@@ -46,21 +46,21 @@ confirm() {
 }
 
 require_root() {
-  [[ $EUID -eq 0 ]] || die "Πρέπει να τρέξει ως root (sudo $0)"
+  [[ $EUID -eq 0 ]] || die "Must run as root (sudo $0)"
 }
 
 require_ubuntu() {
-  [[ -f /etc/os-release ]] || die "Δεν εντοπίστηκε /etc/os-release"
+  [[ -f /etc/os-release ]] || die "/etc/os-release not found"
   . /etc/os-release
-  [[ "$ID" == "ubuntu" ]] || die "Υποστηρίζεται μόνο Ubuntu (βρέθηκε $ID)"
+  [[ "$ID" == "ubuntu" ]] || die "Only Ubuntu is supported (found $ID)"
   case "$VERSION_ID" in
     22.04|24.04) ok "Ubuntu $VERSION_ID detected" ;;
-    *) die "Υποστηρίζεται μόνο Ubuntu 22.04 / 24.04 (βρέθηκε $VERSION_ID)" ;;
+    *) die "Only Ubuntu 22.04 / 24.04 is supported (found $VERSION_ID)" ;;
   esac
 }
 
-# Idempotency: τρέξε command μόνο αν προηγουμένως δεν έχει εκτελεστεί.
-# Δείκτης: αρχείο σε /var/lib/cardano-pool-setup/done/
+# Idempotency: run command only if it has not been executed before.
+# Marker: file in /var/lib/cardano-pool-setup/done/
 mark_done() {
   local marker="/var/lib/cardano-pool-setup/done/$1"
   mkdir -p "$(dirname "$marker")"
@@ -71,7 +71,7 @@ is_done() {
   [[ -f "/var/lib/cardano-pool-setup/done/$1" ]]
 }
 
-# Source config.env (αν υπάρχει)
+# Source config.env (if it exists)
 load_config() {
   local cfg="${1:-${CARDANO_HOME:-/opt/cardano}/config.env}"
   if [[ -f "$cfg" ]]; then
@@ -80,7 +80,7 @@ load_config() {
   fi
 }
 
-# Write config.env στο $CARDANO_HOME
+# Write config.env to $CARDANO_HOME
 save_config() {
   local cfg="${CARDANO_HOME}/config.env"
   mkdir -p "$CARDANO_HOME"

@@ -57,7 +57,7 @@ fi
 section "Peers"
 metrics=$(docker exec producer curl -s http://localhost:12798/metrics 2>/dev/null)
 if [[ -n "$metrics" ]]; then
-  # P2P metrics (νέες εκδόσεις cardano-node)
+  # P2P metrics (newer cardano-node versions)
   p2p_hot=$(echo "$metrics"    | awk '/^cardano_node_metrics_peerSelection_Hot_int / {print $2}')
   p2p_warm=$(echo "$metrics"   | awk '/^cardano_node_metrics_peerSelection_Warm_int / {print $2}')
   p2p_cold=$(echo "$metrics"   | awk '/^cardano_node_metrics_peerSelection_Cold_int / {print $2}')
@@ -129,7 +129,7 @@ if [[ -n "$kes" ]]; then
   if [[ $remaining -gt 10 ]]; then
     ok "KES valid: period ${cur}/${endp} (${remaining} left) — expires ${expiry_human}"
   elif [[ $remaining -gt 0 ]]; then
-    warn "KES expiring soon: ${remaining} periods — rotate ΑΜΕΣΑ"
+    warn "KES expiring soon: ${remaining} periods — rotate IMMEDIATELY"
   else
     err "KES EXPIRED — rotate now!"
   fi

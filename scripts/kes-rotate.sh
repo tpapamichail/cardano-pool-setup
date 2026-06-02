@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 # kes-rotate.sh — KES key rotation (parameterized)
-# Διαβάζει: $CARDANO_HOME/config.env
+# Reads: $CARDANO_HOME/config.env
 # ============================================================
 set -euo pipefail
 
@@ -11,8 +11,8 @@ if [[ -f "$CONFIG_FILE" ]]; then
   set -a; . "$CONFIG_FILE"; set +a
 fi
 
-: "${POOL_NAME:?POOL_NAME απαιτείται (δες $CONFIG_FILE)}"
-: "${CARDANO_HOME:?CARDANO_HOME απαιτείται}"
+: "${POOL_NAME:?POOL_NAME required (see $CONFIG_FILE)}"
+: "${CARDANO_HOME:?CARDANO_HOME required}"
 : "${POOL_DIR:=${CARDANO_HOME}/priv/pool/${POOL_NAME}}"
 : "${BP_KEYS_DIR:=${CARDANO_HOME}/bp-keys}"
 : "${CARDANO_IPC_DIR:=${CARDANO_HOME}/ipc}"
@@ -45,8 +45,8 @@ echo -e "${B}══════════════════════�
 [[ -f "$COLD_COUNTER" ]] || { echo -e "${R}ERROR:${N} Missing $COLD_COUNTER"; exit 1; }
 [[ -d "$BP_KEYS_DIR" ]]  || { echo -e "${R}ERROR:${N} Missing $BP_KEYS_DIR"; exit 1; }
 
-read -rp "$(echo -e ${Y}Συνεχίζουμε με το KES rotation; [yes/N]: ${N})" confirm
-[[ "$confirm" == "yes" ]] || { echo "Ακυρώθηκε."; exit 0; }
+read -rp "$(echo -e ${Y}Proceed with KES rotation\; [yes/N]: ${N})" confirm
+[[ "$confirm" == "yes" ]] || { echo "Cancelled."; exit 0; }
 
 # 1. Current KES period
 echo -e "\n${B}>> Querying current KES period...${N}"
@@ -72,7 +72,7 @@ chmod 400 "$COLD_PLAIN"
 echo -e "   ${G}✓ Decrypted${N}"
 
 # 4. New KES keypair
-echo -e "\n${B}>> Generating νέο KES keypair...${N}"
+echo -e "\n${B}>> Generating new KES keypair...${N}"
 docker run --rm \
   -v "${POOL_DIR}:/keys" \
   "$CARDANO_IMAGE" cli \
@@ -97,7 +97,7 @@ chmod 400 "$OP_CERT" "$COLD_COUNTER"
 echo -e "   ${G}✓ Op cert issued${N}"
 
 # 6. Deploy
-echo -e "\n${B}>> Deploying στο ${BP_KEYS_DIR}/...${N}"
+echo -e "\n${B}>> Deploying to ${BP_KEYS_DIR}/...${N}"
 cp "$KES_SKEY" "$BP_KEYS_DIR/kes.skey"
 cp "$OP_CERT"  "$BP_KEYS_DIR/node.cert"
 chmod 400 "$BP_KEYS_DIR/kes.skey" "$BP_KEYS_DIR/node.cert"
@@ -109,7 +109,7 @@ cd "$CARDANO_HOME" && docker compose restart producer
 echo -e "   ${G}✓ Restart triggered${N}"
 
 # 8. Verify
-echo -e "\n${B}>> Wait 30s για load...${N}"
+echo -e "\n${B}>> Waiting 30s for load...${N}"
 sleep 30
 echo -e "\n${B}>> Verification:${N}"
 docker run --rm \
@@ -122,4 +122,4 @@ docker run --rm \
 echo -e "\n${G}${B}═══════════════════════════════════════════════${N}"
 echo -e "${G}${B} ✓ KES Rotation Complete${N}"
 echo -e "${G}${B}═══════════════════════════════════════════════${N}"
-echo -e "${D} Next rotation πριν την λήξη (~80 μέρες)${N}\n"
+echo -e "${D} Next rotation before expiry (~80 days)${N}\n"

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# keys-install.sh — Validate & install τα pool keys στις σωστές θέσεις
+# keys-install.sh — Validate & install pool keys in the correct locations
 #
-# Ο χρήστης δίνει ένα directory που πρέπει να περιέχει τουλάχιστον:
-#   - cold.skey.gpg     (encrypted cold signing key — ΥΠΟΧΡΕΩΤΙΚΟ)
+# The user provides a directory that must contain at least:
+#   - cold.skey.gpg     (encrypted cold signing key — REQUIRED)
 #   - cold.vkey         (cold verification key)
 #   - cold.counter      (operational certificate counter)
 #   - vrf.skey + vrf.vkey
-#   - hot.skey (KES signing) — ΑΝ προϋπάρχει
-#   - hot.vkey (KES verification) — ΑΝ προϋπάρχει
+#   - hot.skey (KES signing) — IF pre-existing
+#   - hot.vkey (KES verification) — IF pre-existing
 #   - op.cert (ή node.cert) — operational certificate
 #   - pool.id (hex pool id)
 set -uo pipefail
@@ -16,15 +16,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 section "Pool Keys"
 
-: "${KEYS_SOURCE_DIR:?KEYS_SOURCE_DIR απαιτείται}"
-: "${POOL_DIR:?POOL_DIR απαιτείται}"
-: "${BP_KEYS_DIR:?BP_KEYS_DIR απαιτείται}"
+: "${KEYS_SOURCE_DIR:?KEYS_SOURCE_DIR required}"
+: "${POOL_DIR:?POOL_DIR required}"
+: "${BP_KEYS_DIR:?BP_KEYS_DIR required}"
 
-[[ -d "$KEYS_SOURCE_DIR" ]] || die "Source dir δεν υπάρχει: $KEYS_SOURCE_DIR"
+[[ -d "$KEYS_SOURCE_DIR" ]] || die "Source dir does not exist: $KEYS_SOURCE_DIR"
 
-# 1) ΑΠΑΓΟΡΕΥΣΗ plaintext cold.skey στο source
+# 1) FORBID plaintext cold.skey in source
 if [[ -f "${KEYS_SOURCE_DIR}/cold.skey" ]]; then
-  die "ΑΠΑΓΟΡΕΥΕΤΑΙ plaintext cold.skey. Encrypt το πρώτα με gpg-encrypt → cold.skey.gpg, μετά shred το original."
+  die "FORBIDDEN: plaintext cold.skey. Encrypt it first with gpg-encrypt → cold.skey.gpg, then shred the original."
 fi
 
 # 2) Required files
@@ -34,9 +34,9 @@ for f in "${REQUIRED[@]}"; do
   [[ -f "${KEYS_SOURCE_DIR}/$f" ]] || missing+=("$f")
 done
 if [[ ${#missing[@]} -gt 0 ]]; then
-  err "Λείπουν τα παρακάτω αρχεία από ${KEYS_SOURCE_DIR}:"
+  err "The following files are missing from ${KEYS_SOURCE_DIR}:"
   for f in "${missing[@]}"; do echo "    - $f"; done
-  die "Αντιμετώπισε τα missing keys και ξανατρέξε."
+  die "Resolve the missing keys and re-run."
 fi
 
 # 3) Optional: KES (hot.skey/hot.vkey) + op.cert
@@ -56,8 +56,8 @@ for cand in op.cert node.cert; do
 done
 
 if [[ $HAVE_KES -eq 0 || $HAVE_OPCERT -eq 0 ]]; then
-  warn "Λείπει KES keypair ή/και op.cert."
-  warn "Τρέξε χειροκίνητα τα παρακάτω σε ΟΦΛΑΪΝ μηχάνημα και πρόσθεσε στο source:"
+  warn "Missing KES keypair and/or op.cert."
+  warn "Run the following manually on an OFFLINE machine and add to source:"
   hint "  cardano-cli conway node key-gen-KES \\"
   hint "    --verification-key-file hot.vkey --signing-key-file hot.skey"
   hint "  cardano-cli conway node issue-op-cert \\"
@@ -65,7 +65,7 @@ if [[ $HAVE_KES -eq 0 || $HAVE_OPCERT -eq 0 ]]; then
   hint "    --cold-signing-key-file cold.skey \\"
   hint "    --operational-certificate-issue-counter-file cold.counter \\"
   hint "    --kes-period <current> --out-file op.cert"
-  die "Προσθέτεις τα keys αργότερα με kes-rotate.sh"
+  die "Add the keys later with kes-rotate.sh"
 fi
 
 # 4) Install
@@ -83,11 +83,11 @@ install -m 400 "${KEYS_SOURCE_DIR}/hot.vkey"     "${POOL_DIR}/hot.vkey"
 install -m 400 "$opcert_src"                     "${POOL_DIR}/op.cert"
 install -m 400 "${KEYS_SOURCE_DIR}/pool.id"      "${POOL_DIR}/pool.id"
 
-# Runtime keys → BP_KEYS_DIR (read-only mount από το container)
+# Runtime keys → BP_KEYS_DIR (read-only mount from the container)
 install -m 400 "${POOL_DIR}/vrf.skey"  "${BP_KEYS_DIR}/vrf.skey"
 install -m 400 "${POOL_DIR}/hot.skey"  "${BP_KEYS_DIR}/kes.skey"
 install -m 400 "${POOL_DIR}/op.cert"   "${BP_KEYS_DIR}/node.cert"
 
 ok "Keys installed: POOL_DIR=${POOL_DIR}"
 ok "Runtime keys: BP_KEYS_DIR=${BP_KEYS_DIR}"
-warn "Στείλε χειροκίνητα: shred -u τα αρχεία από ${KEYS_SOURCE_DIR} όταν επιβεβαιώσεις ότι ο node ξεκίνησε."
+warn "Run manually: shred -u the files from ${KEYS_SOURCE_DIR} once you confirm the node has started."

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docker.sh — Docker Engine + compose plugin (επίσημο apt repo)
+# docker.sh — Docker Engine + compose plugin (official apt repo)
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/common.sh"
@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 section "Docker"
 
 if command -v docker >/dev/null && docker compose version >/dev/null 2>&1; then
-  ok "Docker ήδη εγκατεστημένο: $(docker --version)"
+  ok "Docker already installed: $(docker --version)"
   mark_done docker
   return 0 2>/dev/null || exit 0
 fi

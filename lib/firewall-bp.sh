@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# firewall-bp.sh — UFW lockdown για Block Producer
-# Επιτρέπει inbound: μόνο SSH (και προαιρετικά από συγκεκριμένα IPs)
-# Outbound: επιτρέπεται μόνο στους relays στο RELAY_PORT
+# firewall-bp.sh — UFW lockdown for Block Producer
+# Inbound: only SSH (and optionally from specific IPs)
+# Outbound: only allowed to relays on RELAY_PORT
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/common.sh"
 
 section "Firewall (BP lockdown)"
 
-: "${RELAY_HOSTS:?RELAY_HOSTS πρέπει να είναι ορισμένο}"
+: "${RELAY_HOSTS:?RELAY_HOSTS must be set}"
 : "${RELAY_PORT:=6000}"
 
 SSH_PORT="${SSH_PORT:-22}"
@@ -16,13 +16,13 @@ SSH_PORT="${SSH_PORT:-22}"
 # Reset & defaults
 ufw --force reset >/dev/null
 ufw default deny incoming >/dev/null
-ufw default allow outgoing >/dev/null   # outbound open στους relays — βλ. παρακάτω για restriction
+ufw default allow outgoing >/dev/null   # outbound open to relays — see below for restriction
 
 # Allow SSH
 ufw allow "${SSH_PORT}/tcp" comment 'SSH' >/dev/null
 ok "SSH (${SSH_PORT}/tcp) allowed inbound"
 
-# Allow Cardano port inbound ΜΟΝΟ από τα IPs των relays (resolve hostnames τώρα)
+# Allow Cardano port inbound ONLY from relay IPs (resolve hostnames now)
 IFS=',' read -ra RELAYS <<< "$RELAY_HOSTS"
 for host in "${RELAYS[@]}"; do
   host=$(echo "$host" | xargs)

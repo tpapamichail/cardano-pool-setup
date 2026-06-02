@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# install-relay.sh — One-shot setup για Cardano Relay
+# install-relay.sh — One-shot setup for Cardano Relay
 # Usage: sudo ./install-relay.sh
 # ============================================================
 set -uo pipefail
@@ -20,11 +20,11 @@ echo -e "${B}╚═════════════════════�
 # ────────── Interactive prompts ──────────
 section "Configuration"
 NODE_ROLE=relay
-POOL_NAME=""  # Δεν χρειάζεται σε relay αλλά κρατάμε για consistency στο config
+POOL_NAME=""  # Not needed on relay but kept for config consistency
 prompt CARDANO_HOME    "Cardano root directory"               "/opt/cardano"
-prompt RELAY_HOSTS     "Όλοι οι relays του pool σου (FQDN, comma-separated)" "relay1.example.com,relay2.example.com,relay3.example.com"
+prompt RELAY_HOSTS     "All your pool's relays (FQDN, comma-separated)" "relay1.example.com,relay2.example.com,relay3.example.com"
 prompt RELAY_PORT      "Relay port (public)"                  "6000"
-prompt BP_EXPECTED_IP  "IP του BP (για verification ότι συνδέεται)" ""
+prompt BP_EXPECTED_IP  "BP IP (to verify it is connecting)" ""
 prompt CARDANO_NETWORK "Network"                              "mainnet"
 prompt CARDANO_IMAGE   "Docker image"                         "ghcr.io/blinklabs-io/cardano-node:latest"
 
@@ -60,7 +60,7 @@ cat <<EOF
   Telegram:    ${TELEGRAM_BOT_TOKEN:+enabled}${TELEGRAM_BOT_TOKEN:-disabled}
 EOF
 echo
-confirm "Συνεχίζουμε;" "yes" || die "Ακυρώθηκε."
+confirm "Continue?" "yes" || die "Cancelled."
 
 # ────────── Steps ──────────
 . "${LIB}/os-base.sh"
@@ -81,7 +81,7 @@ save_config
 # ────────── Final ──────────
 section "Done"
 ok "Relay container started"
-hint "Αναμένεται validation+sync (αρκετές ώρες σε mainnet)"
-hint "Δοκίμασε: docker logs -f relay (ή 'r-logs' σε νέο shell)"
-hint "Για να ενεργοποιηθούν τα aliases: exec zsh ή ξανασυνδέσου με SSH"
+hint "Expect validation+sync (several hours on mainnet)"
+hint "Try: docker logs -f relay (or 'r-logs' in a new shell)"
+hint "To activate aliases: exec zsh or reconnect via SSH"
 echo

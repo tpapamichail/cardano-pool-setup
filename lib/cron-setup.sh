@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cron-setup.sh — systemd timers για περιοδικά health checks
+# cron-setup.sh — systemd timers for periodic health checks
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/common.sh"
@@ -9,14 +9,14 @@ section "Cron / Systemd Timers"
 : "${CARDANO_HOME:?required}"
 : "${NODE_ROLE:?required}"
 
-# Script path που θα τρέχει
+# Script path that will run
 case "$NODE_ROLE" in
   producer) health_script="${CARDANO_HOME}/scripts/bp-preflight.sh" ;;
   relay)    health_script="${CARDANO_HOME}/scripts/relay-health.sh" ;;
   *) die "Bad NODE_ROLE" ;;
 esac
 
-[[ -x "$health_script" ]] || { warn "Health script όχι executable: $health_script"; return 0; }
+[[ -x "$health_script" ]] || { warn "Health script not executable: $health_script"; return 0; }
 
 cat > /etc/systemd/system/cardano-health.service <<EOF
 [Unit]
@@ -44,5 +44,5 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now cardano-health.timer >/dev/null
-ok "cardano-health.timer enabled (κάθε 15 λεπτά)"
+ok "cardano-health.timer enabled (every 15 minutes)"
 mark_done cron-setup

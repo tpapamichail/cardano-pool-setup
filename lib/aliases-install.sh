@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# aliases-install.sh — Source τα κατάλληλα aliases στο ~/.zshrc του root
+# aliases-install.sh — Source the appropriate aliases into root's ~/.zshrc
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/common.sh"
@@ -18,7 +18,7 @@ esac
 
 dst="${CARDANO_HOME}/aliases.zsh"
 install -m 644 "$src" "$dst"
-# Επίσης κάνε copy το scripts/ για να μπορούν τα aliases να το χρησιμοποιήσουν
+# Also copy scripts/ so that aliases can use them
 mkdir -p "${CARDANO_HOME}/scripts"
 for s in bp-health.sh bp-preflight.sh relay-health.sh kes-rotate.sh gpg-helpers.sh; do
   if [[ -f "${REPO_DIR}/scripts/$s" ]]; then
@@ -27,12 +27,12 @@ for s in bp-health.sh bp-preflight.sh relay-health.sh kes-rotate.sh gpg-helpers.
 done
 ok "Scripts deployed → ${CARDANO_HOME}/scripts/"
 
-# Append στο ~/.zshrc του root (idempotent)
+# Append to root's ~/.zshrc (idempotent)
 zshrc=/root/.zshrc
 marker="# >>> cardano-pool-setup >>>"
 endmarker="# <<< cardano-pool-setup <<<"
 
-# Strip τυχόν προηγούμενο block
+# Strip any previous block
 if grep -q "$marker" "$zshrc" 2>/dev/null; then
   sed -i "/${marker}/,/${endmarker}/d" "$zshrc"
 fi
@@ -46,4 +46,4 @@ export CARDANO_HOME="${CARDANO_HOME}"
 ${endmarker}
 EOF
 
-ok "Aliases sourced from ~/.zshrc (help + quickcheck auto-run στο login)"
+ok "Aliases sourced from ~/.zshrc (help + quickcheck auto-run on login)"
